@@ -153,6 +153,29 @@
     color: #fff;
   }
 
+  .mode-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 20px;
+  }
+  .mode-tab {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    padding: 8px 16px;
+    border: 1.5px solid var(--line-strong);
+    border-radius: 20px;
+    background: transparent;
+    color: var(--ink-soft);
+    cursor: pointer;
+  }
+  .mode-tab.on {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--paper);
+  }
+
   /* Loading */
   .loading {
     margin-top: 22px;
@@ -349,12 +372,17 @@
     <div class="tagline">a calmer way<br/>to read a label</div>
   </header>
 
-  <p class="app-desc">Snap a photo of any food label and get a calm, evidence-based read on what's actually worth paying attention to.</p>
+  <p class="app-desc">Snap a photo of any product label and get a calm, evidence-based read on what's actually worth paying attention to.</p>
+
+  <div class="mode-tabs" id="modeTabs">
+    <button class="mode-tab on" data-mode="food" type="button">Food</button>
+    <button class="mode-tab" data-mode="skincare" type="button">Skincare</button>
+  </div>
 
   <label class="dropzone" id="dropzone">
     <input type="file" id="fileInput" accept="image/*" />
-    <div class="dz-title">Add a photo of the label</div>
-    <div class="dz-sub">Ingredient list or nutrition panel — either works</div>
+    <div class="dz-title" id="dzTitle">Add a photo of the label</div>
+    <div class="dz-sub" id="dzSub">Ingredient list or nutrition panel — either works</div>
   </label>
 
   <div class="preview-row" id="previewRow" style="display:none;">
@@ -362,7 +390,7 @@
     <div class="preview-name" id="previewName"></div>
   </div>
 
-  <div class="section-label">What matters to you? (optional)</div>
+  <div class="section-label" id="filtersLabel">What matters to you? (optional)</div>
   <div class="chips" id="chips">
     <div class="chip" data-v="blood sugar / diabetes">Blood sugar</div>
     <div class="chip" data-v="gut sensitivity or IBD">Gut sensitivity</div>
@@ -372,6 +400,16 @@
     <div class="chip" data-v="high blood pressure / sodium sensitivity">High blood pressure</div>
     <div class="chip" data-v="heart disease / cardiovascular risk">Heart disease</div>
     <div class="chip" data-v="bloating or general GI discomfort">Bloating / GI</div>
+  </div>
+  <div class="chips" id="skinChips" style="display:none;">
+    <div class="chip" data-v="acne-prone skin">Acne-prone</div>
+    <div class="chip" data-v="sensitive or reactive skin">Sensitive skin</div>
+    <div class="chip" data-v="eczema or dermatitis">Eczema / dermatitis</div>
+    <div class="chip" data-v="rosacea">Rosacea</div>
+    <div class="chip" data-v="fragrance sensitivity or allergy">Fragrance sensitivity</div>
+    <div class="chip" data-v="pregnancy or breastfeeding">Pregnancy</div>
+    <div class="chip" data-v="dry or dehydrated skin">Dry skin</div>
+    <div class="chip" data-v="oily or combination skin">Oily / combination</div>
   </div>
 
   <div class="btn-row">
@@ -398,10 +436,62 @@ const loading = document.getElementById('loading');
 const errorBox = document.getElementById('errorBox');
 const resultsEl = document.getElementById('results');
 const chipsEl = document.getElementById('chips');
+const skinChipsEl = document.getElementById('skinChips');
+const modeTabs = document.getElementById('modeTabs');
+const dzTitle = document.getElementById('dzTitle');
+const dzSub = document.getElementById('dzSub');
+const appDesc = document.querySelector('.app-desc');
+const filtersLabel = document.getElementById('filtersLabel');
 
 let imageBase64 = null;
 let imageMediaType = null;
 const selectedFilters = new Set();
+let currentMode = 'food';
+
+const modeCopy = {
+  food: {
+    desc: "Snap a photo of any food label and get a calm, evidence-based read on what's actually worth paying attention to.",
+    dzTitle: 'Add a photo of the label',
+    dzSub: 'Ingredient list or nutrition panel — either works',
+    filtersLabel: 'What matters to you? (optional)'
+  },
+  skincare: {
+    desc: "Snap a photo of any skincare ingredient list and get a calm, evidence-based read on what's actually worth paying attention to.",
+    dzTitle: 'Add a photo of the ingredient list',
+    dzSub: 'The back of the bottle/tube usually has it',
+    filtersLabel: "What's your skin like? (optional)"
+  }
+};
+
+modeTabs.addEventListener('click', (e) => {
+  const tab = e.target.closest('.mode-tab');
+  if (!tab) return;
+  currentMode = tab.dataset.mode;
+
+  modeTabs.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('on', t === tab));
+  chipsEl.style.display = currentMode === 'food' ? 'flex' : 'none';
+  skinChipsEl.style.display = currentMode === 'skincare' ? 'flex' : 'none';
+
+  const copy = modeCopy[currentMode];
+  appDesc.textContent = copy.desc;
+  dzTitle.textContent = copy.dzTitle;
+  dzSub.textContent = copy.dzSub;
+  filtersLabel.textContent = copy.filtersLabel;
+
+  // Switching modes clears filter selections from the other mode
+  document.querySelectorAll('.chip.on').forEach(c => c.classList.remove('on'));
+  selectedFilters.clear();
+});
+
+skinChipsEl.addEventListener('click', (e) => {
+  const chip = e.target.closest('.chip');
+  if (!chip) return;
+  chip.classList.toggle('on');
+  const v = chip.dataset.v;
+  if (selectedFilters.has(v)) selectedFilters.delete(v);
+  else selectedFilters.add(v);
+});
+
 
 chipsEl.addEventListener('click', (e) => {
   const chip = e.target.closest('.chip');
@@ -493,7 +583,8 @@ async function analyzeLabel() {
       body: JSON.stringify({
         imageBase64: imageBase64,
         imageMediaType: imageMediaType,
-        filters: Array.from(selectedFilters)
+        filters: Array.from(selectedFilters),
+        mode: currentMode
       })
     });
 
