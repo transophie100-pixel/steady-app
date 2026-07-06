@@ -415,15 +415,44 @@ chipsEl.addEventListener('click', (e) => {
 fileInput.addEventListener('change', () => {
   const file = fileInput.files[0];
   if (!file) return;
-  imageMediaType = file.type || 'image/jpeg';
+  errorBox.classList.remove('on');
+
   const reader = new FileReader();
   reader.onload = () => {
-    imageBase64 = reader.result.split(',')[1];
-    previewThumb.src = reader.result;
-    previewName.textContent = file.name;
-    previewRow.style.display = 'flex';
-    analyzeBtn.disabled = false;
-    errorBox.classList.remove('on');
+    const img = new Image();
+    img.onload = () => {
+      // Shrink to a max dimension so the payload stays well under
+      // serverless function size limits, while keeping label text readable.
+      const MAX_DIM = 1400;
+      let { width, height } = img;
+      if (width > height && width > MAX_DIM) {
+        height = Math.round(height * (MAX_DIM / width));
+        width = MAX_DIM;
+      } else if (height > MAX_DIM) {
+        width = Math.round(width * (MAX_DIM / height));
+        height = MAX_DIM;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      imageBase64 = dataUrl.split(',')[1];
+      imageMediaType = 'image/jpeg';
+
+      previewThumb.src = dataUrl;
+      previewName.textContent = file.name;
+      previewRow.style.display = 'flex';
+      analyzeBtn.disabled = false;
+    };
+    img.onerror = () => {
+      errorBox.textContent = "Couldn't read that image — try a different photo.";
+      errorBox.classList.add('on');
+    };
+    img.src = reader.result;
   };
   reader.onerror = () => {
     errorBox.textContent = "Couldn't read that image — try a different photo.";
