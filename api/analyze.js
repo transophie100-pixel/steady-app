@@ -6,7 +6,7 @@
 // is overloaded or errors out, automatically fall back to Groq's free
 // vision model, so a single provider's bad moment doesn't break the app.
 
-function buildPrompt(filters) {
+function buildPrompt(filters, cautious) {
   const filterList = filters || [];
   const filterText = filterList.length
     ? `The person specifically cares about: ${filterList.join(', ')}. Weight your verdict and notes toward these priorities.`
@@ -17,7 +17,13 @@ function buildPrompt(filters) {
     ? `\n\nThe person selected "Kids' lunchbox." For synthetic dyes specifically (Red 40, Yellow 5, Yellow 6, Blue 1, etc.), raise care_level to at least "Medium" — the Southampton study and subsequent reviews found a real (if inconsistent) link to hyperactivity in some children, which is why the EU requires a warning label on foods containing them. Don't say "no big deal" for dyes in this context.`
     : '';
 
+  const cautiousNote = cautious
+    ? `\n\nThe person has turned on "More cautious" mode. In this mode: for any ingredient you'd otherwise rate "Mixed" evidence, raise care_level to at least "Medium" (don't default to "Low" for mixed-evidence ingredients). Where a stricter regulatory stance exists somewhere in the world (e.g. an EU ban or warning-label requirement), weight that more heavily than you would by default. If the product looks like a candy (gummy, hard candy, taffy, chocolate, etc.), mention as one of the top_reasons or in personalization_note that a January 2026 Florida Department of Health investigation found elevated arsenic levels in many popular candy brands — but present this as "worth knowing, actively disputed" rather than settled fact, since the FDA has publicly pushed back on Florida's methodology and there's an ongoing class action, not a resolved finding.`
+    : '';
+
   return `You are a calm, evidence-based food label interpreter. Your voice is the opposite of fear-based scanner apps: no alarmism, no "toxic" language, no fearmongering about trace additives. You give context, not verdicts dressed up as facts. You acknowledge uncertainty honestly (say "mixed evidence" when evidence is mixed, don't overstate) — but you also don't undersell ingredients that have real, if nuanced, evidence behind them.
+
+Hard rule, regardless of mode: do not claim that any food preservative or additive impairs vaccine efficacy or immune response to vaccines. This claim circulates online but traces back to thin, poorly-generalizable animal studies — do not include it under any circumstance, even if asked to be more cautious.
 
 Ground your notes on these commonly-flagged ingredients in this specific calibration rather than improvising, since blog-level sources tend to either overstate or understate these:
 
@@ -47,7 +53,7 @@ Read the ingredient list and/or nutrition panel in the attached photo. Then resp
   "swaps": ["practical swap suggestion 1", "practical swap suggestion 2"]
 }
 
-Only include ingredients worth flagging (skip totally uninteresting ones like water or salt unless sodium content matters). Cap ingredients at 6. Cap top_reasons at 3. Cap swaps at 3. ${filterText}${kidsNote}`;
+Only include ingredients worth flagging (skip totally uninteresting ones like water or salt unless sodium content matters). Cap ingredients at 6. Cap top_reasons at 3. Cap swaps at 3. ${filterText}${kidsNote}${cautiousNote}`;
 }
 
 async function tryGemini(imageBase64, imageMediaType, promptText) {
@@ -121,13 +127,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { imageBase64, imageMediaType, filters } = req.body || {};
+  const { imageBase64, imageMediaType, filters, cautious } = req.body || {};
 
   if (!imageBase64 || !imageMediaType) {
     return res.status(400).json({ error: 'Missing image data' });
   }
 
-  const promptText = buildPrompt(filters);
+  const promptText = buildPrompt(filters, !!cautious);
   const errors = [];
 
   // Primary: Gemini, with two quick retries if it's just overloaded.
