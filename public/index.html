@@ -487,35 +487,19 @@ async function analyzeLabel() {
   analyzeBtn.disabled = true;
 
   try {
-    const maxAttempts = 3;
-    let response, lastErrBody;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      response = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageBase64: imageBase64,
-          imageMediaType: imageMediaType,
-          filters: Array.from(selectedFilters)
-        })
-      });
-
-      if (response.ok) break;
-
-      lastErrBody = await response.text();
-      const isOverloaded = response.status === 503 || lastErrBody.includes('UNAVAILABLE') || lastErrBody.includes('high demand');
-
-      if (isOverloaded && attempt < maxAttempts) {
-        loading.firstChild.textContent = `label reader is busy, retrying (${attempt}/${maxAttempts - 1}) `;
-        await new Promise(r => setTimeout(r, attempt * 1500));
-        continue;
-      }
-      break;
-    }
+    const response = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        imageBase64: imageBase64,
+        imageMediaType: imageMediaType,
+        filters: Array.from(selectedFilters)
+      })
+    });
 
     if (!response.ok) {
-      throw new Error("API error " + response.status + ": " + lastErrBody.slice(0, 300));
+      const errBody = await response.text();
+      throw new Error("API error " + response.status + ": " + errBody.slice(0, 300));
     }
     const data = await response.json();
     const textBlock = data.content.find(b => b.type === 'text');
