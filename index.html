@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Steady — a calmer way to read labels</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #21281F;
+    --ink-soft: #56604F;
+    --paper: #F2EEE3;
+    --card: #FFFDF9;
+    --line: #D8D0BC;
+    --line-strong: #B9AF95;
+    --olive: #45573A;
+    --olive-deep: #2E3A26;
+    --good: #4E7A50;
+    --good-bg: #E7EEE1;
+    --okay: #B98A2E;
+    --okay-bg: #F4EAD3;
+    --caution: #A24B3B;
+    --caution-bg: #F3E1DA;
+    --radius: 4px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Public Sans', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 28px 20px 80px;
+  }
+
+  header.app-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 14px;
+    margin-bottom: 22px;
+  }
+
+  .wordmark {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 28px;
+    letter-spacing: -0.01em;
+  }
+  .wordmark span { color: var(--olive); }
+
+  .tagline {
+    font-size: 12px;
+    color: var(--ink-soft);
+    font-family: 'IBM Plex Mono', monospace;
+    text-align: right;
+    line-height: 1.4;
+  }
+
+  .app-desc {
+    font-size: 14.5px;
+    color: var(--ink-soft);
+    line-height: 1.5;
+    margin: 0 0 22px;
+  }
+
+  /* Upload zone */
+  .dropzone {
+    display: block;
+    border: 2px dashed var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--card);
+    padding: 34px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .dropzone:hover, .dropzone.drag {
+    border-color: var(--olive);
+    background: #FBF9F2;
+  }
+  .dropzone input { display: none; }
+  .dz-title {
+    font-weight: 600;
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+  .dz-title::before {
+    content: '+';
+    display: inline-block;
+    margin-right: 6px;
+    color: var(--olive);
+    font-weight: 700;
+  }
+  .dz-sub { font-size: 13px; color: var(--ink-soft); }
+
+  .preview-row {
+    display: flex; gap: 12px; align-items: center;
+    margin-top: 14px;
+  }
+  .preview-thumb {
+    width: 56px; height: 56px; object-fit: cover;
+    border: 1px solid var(--line-strong); border-radius: var(--radius);
+  }
+  .preview-name { font-size: 13px; color: var(--ink-soft); flex: 1; }
+  .btn {
+    font-family: 'Public Sans', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    border: 1.5px solid var(--ink);
+    background: var(--ink);
+    color: var(--paper);
+    padding: 10px 18px;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.ghost { background: transparent; color: var(--ink); }
+  .btn-row { margin-top: 16px; display: flex; gap: 10px; }
+
+  /* Filter chips */
+  .section-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 26px 0 10px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    font-size: 13px;
+    padding: 7px 12px;
+    border: 1.5px solid var(--line-strong);
+    border-radius: 20px;
+    background: var(--card);
+    cursor: pointer;
+    user-select: none;
+    color: var(--ink-soft);
+  }
+  .chip.on {
+    background: var(--olive);
+    border-color: var(--olive);
+    color: #fff;
+  }
+
+  /* Loading */
+  .loading {
+    margin-top: 22px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--ink-soft);
+    display: none;
+  }
+  .loading.on { display: block; }
+  .loading .dots::after {
+    content: '';
+    animation: dots 1.2s steps(4, end) infinite;
+  }
+  @keyframes dots { 0%{content:''} 25%{content:'.'} 50%{content:'..'} 75%{content:'...'} 100%{content:''} }
+
+  .error-box {
+    margin-top: 16px;
+    border: 1.5px solid var(--caution);
+    background: var(--caution-bg);
+    color: var(--caution);
+    padding: 12px 14px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    display: none;
+  }
+  .error-box.on { display: block; }
+
+  /* Results */
+  #results { display: none; margin-top: 30px; }
+  #results.on { display: block; }
+
+  .verdict-card {
+    display: flex;
+    gap: 18px;
+    align-items: center;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+  .stamp {
+    width: 64px; height: 64px; border-radius: 50%;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 22px;
+    border: 3px solid currentColor;
+  }
+  .stamp.good { color: var(--good); }
+  .stamp.okay { color: var(--okay); }
+  .stamp.caution { color: var(--caution); }
+
+  .verdict-text-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 4px;
+  }
+  .verdict-line {
+    font-family: 'Fraunces', serif;
+    font-size: 19px;
+    font-weight: 500;
+    line-height: 1.35;
+  }
+
+  .personalization-note {
+    margin-top: 14px;
+    font-size: 13.5px;
+    color: var(--ink-soft);
+    border-left: 3px solid var(--olive);
+    padding: 8px 12px;
+    background: var(--card);
+  }
+
+  .reasons {
+    list-style: none;
+    margin: 14px 0 0;
+    padding: 0;
+    counter-reset: reason;
+  }
+  .reasons li {
+    counter-increment: reason;
+    display: flex;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 14.5px;
+  }
+  .reasons li::before {
+    content: counter(reason);
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--olive);
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+
+  /* Ingredient ledger */
+  .ledger {
+    margin-top: 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--card);
+    overflow: hidden;
+  }
+  .ledger-head {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 15px;
+    padding: 12px 16px;
+    border-bottom: 2px solid var(--ink);
+  }
+  .ing-row {
+    border-bottom: 1px solid var(--line);
+  }
+  .ing-row:last-child { border-bottom: none; }
+  .ing-summary {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 12px 16px;
+    cursor: pointer;
+  }
+  .ing-name {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13.5px;
+    white-space: nowrap;
+  }
+  .ing-leader {
+    flex: 1;
+    border-bottom: 1px dotted var(--line-strong);
+    transform: translateY(-4px);
+  }
+  .ing-tag {
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+    padding: 3px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+  }
+  .ing-tag.Low { background: var(--good-bg); color: var(--good); }
+  .ing-tag.Medium { background: var(--okay-bg); color: var(--okay); }
+  .ing-tag.High { background: var(--caution-bg); color: var(--caution); }
+
+  .ing-detail {
+    display: none;
+    padding: 0 16px 16px 16px;
+    font-size: 13.5px;
+    color: var(--ink-soft);
+    line-height: 1.55;
+  }
+  .ing-row.open .ing-detail { display: block; }
+  .ing-detail dl { margin: 0; }
+  .ing-detail dt {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--ink);
+    margin-top: 8px;
+  }
+  .ing-detail dd { margin: 2px 0 0; }
+
+  .swaps {
+    margin-top: 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--card);
+    padding: 16px;
+  }
+  .swaps ul { margin: 8px 0 0; padding-left: 18px; }
+  .swaps li { font-size: 14px; margin-bottom: 6px; }
+
+  .reset-row { margin-top: 26px; text-align: center; }
+  .reset-row button {
+    background: none; border: none;
+    color: var(--ink-soft);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="app-head">
+    <div class="wordmark">STEADY<span>.</span></div>
+    <div class="tagline">a calmer way<br/>to read a label</div>
+  </header>
+
+  <p class="app-desc">Snap a photo of any food label and get a calm, evidence-based read on what's actually worth paying attention to.</p>
+
+  <label class="dropzone" id="dropzone">
+    <input type="file" id="fileInput" accept="image/*" capture="environment" />
+    <div class="dz-title">Add a photo of the label</div>
+    <div class="dz-sub">Ingredient list or nutrition panel — either works</div>
+  </label>
+
+  <div class="preview-row" id="previewRow" style="display:none;">
+    <img id="previewThumb" class="preview-thumb" />
+    <div class="preview-name" id="previewName"></div>
+  </div>
+
+  <div class="section-label">What matters to you? (optional)</div>
+  <div class="chips" id="chips">
+    <div class="chip" data-v="blood sugar / diabetes">Blood sugar</div>
+    <div class="chip" data-v="gut sensitivity or IBD">Gut sensitivity</div>
+    <div class="chip" data-v="feeding a kid, kids' lunchbox">Kids' lunchbox</div>
+    <div class="chip" data-v="pregnancy">Pregnancy</div>
+    <div class="chip" data-v="weight loss goals">Weight loss</div>
+    <div class="chip" data-v="high blood pressure / sodium sensitivity">High blood pressure</div>
+    <div class="chip" data-v="heart disease / cardiovascular risk">Heart disease</div>
+    <div class="chip" data-v="bloating or general GI discomfort">Bloating / GI</div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="analyzeBtn" disabled>Read this label</button>
+    <button class="btn ghost" id="clearBtn" style="display:none;">Start over</button>
+  </div>
+
+  <div class="loading" id="loading">reading label<span class="dots"></span></div>
+  <div class="error-box" id="errorBox"></div>
+
+  <div id="results"></div>
+
+</div>
+
+<script>
+const fileInput = document.getElementById('fileInput');
+const dropzone = document.getElementById('dropzone');
+const previewRow = document.getElementById('previewRow');
+const previewThumb = document.getElementById('previewThumb');
+const previewName = document.getElementById('previewName');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const clearBtn = document.getElementById('clearBtn');
+const loading = document.getElementById('loading');
+const errorBox = document.getElementById('errorBox');
+const resultsEl = document.getElementById('results');
+const chipsEl = document.getElementById('chips');
+
+let imageBase64 = null;
+let imageMediaType = null;
+const selectedFilters = new Set();
+
+chipsEl.addEventListener('click', (e) => {
+  const chip = e.target.closest('.chip');
+  if (!chip) return;
+  chip.classList.toggle('on');
+  const v = chip.dataset.v;
+  if (selectedFilters.has(v)) selectedFilters.delete(v);
+  else selectedFilters.add(v);
+});
+
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+  imageMediaType = file.type || 'image/jpeg';
+  const reader = new FileReader();
+  reader.onload = () => {
+    imageBase64 = reader.result.split(',')[1];
+    previewThumb.src = reader.result;
+    previewName.textContent = file.name;
+    previewRow.style.display = 'flex';
+    analyzeBtn.disabled = false;
+    errorBox.classList.remove('on');
+  };
+  reader.onerror = () => {
+    errorBox.textContent = "Couldn't read that image — try a different photo.";
+    errorBox.classList.add('on');
+  };
+  reader.readAsDataURL(file);
+});
+
+clearBtn.addEventListener('click', () => resetAll());
+
+function resetAll() {
+  imageBase64 = null;
+  fileInput.value = '';
+  previewRow.style.display = 'none';
+  analyzeBtn.disabled = true;
+  clearBtn.style.display = 'none';
+  resultsEl.classList.remove('on');
+  resultsEl.innerHTML = '';
+  errorBox.classList.remove('on');
+  document.querySelectorAll('.chip.on').forEach(c => c.classList.remove('on'));
+  selectedFilters.clear();
+}
+
+analyzeBtn.addEventListener('click', analyzeLabel);
+
+async function analyzeLabel() {
+  if (!imageBase64) return;
+  loading.classList.add('on');
+  errorBox.classList.remove('on');
+  resultsEl.classList.remove('on');
+  analyzeBtn.disabled = true;
+
+  try {
+    const response = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        imageBase64: imageBase64,
+        imageMediaType: imageMediaType,
+        filters: Array.from(selectedFilters)
+      })
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      throw new Error("API error " + response.status + ": " + errBody.slice(0, 300));
+    }
+    const data = await response.json();
+    const textBlock = data.content.find(b => b.type === 'text');
+    if (!textBlock) throw new Error("No text block in response: " + JSON.stringify(data).slice(0, 300));
+
+    let raw = textBlock.text.trim();
+    const firstBrace = raw.indexOf('{');
+    const lastBrace = raw.lastIndexOf('}');
+    if (firstBrace === -1 || lastBrace === -1) {
+      throw new Error("No JSON object found in model response: " + raw.slice(0, 300));
+    }
+    const cleaned = raw.slice(firstBrace, lastBrace + 1);
+    let parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (parseErr) {
+      throw new Error("JSON parse failed: " + parseErr.message + " | raw: " + cleaned.slice(0, 300));
+    }
+    renderResults(parsed);
+    clearBtn.style.display = 'inline-block';
+  } catch (err) {
+    console.error(err);
+    errorBox.innerHTML = "Something went wrong reading that label.<br/><span style='font-family: \"IBM Plex Mono\", monospace; font-size: 11px; opacity: .8;'>" + esc(err.message) + "</span>";
+    errorBox.classList.add('on');
+  } finally {
+    loading.classList.remove('on');
+    analyzeBtn.disabled = false;
+  }
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : s;
+  return d.innerHTML;
+}
+
+function renderResults(r) {
+  const stampLetter = { good: 'OK', okay: '~', caution: '!' }[r.verdict] || '~';
+  const verdictWord = { good: 'Good everyday option', okay: 'Fine sometimes', caution: 'Occasional food' }[r.verdict] || 'Read the details';
+
+  let html = `
+    <div class="verdict-card">
+      <div class="stamp ${esc(r.verdict)}">${stampLetter}</div>
+      <div>
+        <div class="verdict-text-label">${esc(verdictWord)}</div>
+        <div class="verdict-line">${esc(r.verdict_line)}</div>
+      </div>
+    </div>`;
+
+  if (r.personalization_note) {
+    html += `<div class="personalization-note">${esc(r.personalization_note)}</div>`;
+  }
+
+  if (r.top_reasons && r.top_reasons.length) {
+    html += `<div class="section-label">Top reasons</div><ul class="reasons">`;
+    r.top_reasons.forEach(reason => {
+      html += `<li>${esc(reason)}</li>`;
+    });
+    html += `</ul>`;
+  }
+
+  if (r.ingredients && r.ingredients.length) {
+    html += `<div class="section-label">Ingredient ledger</div><div class="ledger">
+      <div class="ledger-head">Worth knowing about</div>`;
+    r.ingredients.forEach((ing, i) => {
+      html += `
+        <div class="ing-row" data-idx="${i}">
+          <div class="ing-summary" onclick="this.parentElement.classList.toggle('open')">
+            <span class="ing-name">${esc(ing.name)}</span>
+            <span class="ing-leader"></span>
+            <span class="ing-tag ${esc(ing.care_level)}">${esc(ing.care_level)} concern</span>
+          </div>
+          <div class="ing-detail">
+            <dl>
+              <dt>Why it's used</dt><dd>${esc(ing.role)}</dd>
+              <dt>Evidence level</dt><dd>${esc(ing.evidence_level)}</dd>
+              <dt>Should you care?</dt><dd>${esc(ing.note)}</dd>
+            </dl>
+          </div>
+        </div>`;
+    });
+    html += `</div>`;
+  }
+
+  if (r.swaps && r.swaps.length) {
+    html += `<div class="section-label">Better swaps</div><div class="swaps"><ul>`;
+    r.swaps.forEach(s => { html += `<li>${esc(s)}</li>`; });
+    html += `</ul></div>`;
+  }
+
+  resultsEl.innerHTML = html;
+  resultsEl.classList.add('on');
+}
+</script>
+</body>
+</html>
