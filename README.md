@@ -57,4 +57,4 @@ Now that you're set up locally:
 - Vercel automatically redeploys within about a minute — no extra steps
 
 That's the loop, indefinitely: chat with me → edit locally → commit → push → Vercel auto-updates.
-testing
+testing this readme
