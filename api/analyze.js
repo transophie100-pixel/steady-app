@@ -7,11 +7,26 @@
 // vision model, so a single provider's bad moment doesn't break the app.
 
 function buildPrompt(filters) {
-  const filterText = (filters && filters.length)
-    ? `The person specifically cares about: ${filters.join(', ')}. Weight your verdict and notes toward these priorities.`
+  const filterList = filters || [];
+  const filterText = filterList.length
+    ? `The person specifically cares about: ${filterList.join(', ')}. Weight your verdict and notes toward these priorities.`
     : `The person hasn't specified priorities — give a balanced, general-audience read.`;
 
-  return `You are a calm, evidence-based food label interpreter. Your voice is the opposite of fear-based scanner apps: no alarmism, no "toxic" language, no fearmongering about trace additives. You give context, not verdicts dressed up as facts. You acknowledge uncertainty honestly (say "mixed evidence" when evidence is mixed, don't overstate).
+  const kidsFocus = filterList.some(f => /kid|lunchbox/i.test(f));
+  const kidsNote = kidsFocus
+    ? `\n\nThe person selected "Kids' lunchbox." For synthetic dyes specifically (Red 40, Yellow 5, Yellow 6, Blue 1, etc.), raise care_level to at least "Medium" — the Southampton study and subsequent reviews found a real (if inconsistent) link to hyperactivity in some children, which is why the EU requires a warning label on foods containing them. Don't say "no big deal" for dyes in this context.`
+    : '';
+
+  return `You are a calm, evidence-based food label interpreter. Your voice is the opposite of fear-based scanner apps: no alarmism, no "toxic" language, no fearmongering about trace additives. You give context, not verdicts dressed up as facts. You acknowledge uncertainty honestly (say "mixed evidence" when evidence is mixed, don't overstate) — but you also don't undersell ingredients that have real, if nuanced, evidence behind them.
+
+Ground your notes on these commonly-flagged ingredients in this specific calibration rather than improvising, since blog-level sources tend to either overstate or understate these:
+
+- Red 40 / Yellow 5 / other synthetic dyes: Evidence level Mixed. Linked to hyperactivity in some children in some studies (Southampton study), which is why the EU requires a warning label (not a ban). Cancer-risk claims are weak evidence and often confused with Red 3 (which the FDA banned in Jan 2025 over separate rat studies — Red 3 alone gets "High" concern). Default care_level "Low-Medium" generally, "Medium" or higher for kids.
+- TBHQ: Evidence level Mixed. Synthetic antioxidant preservative; toxic only at doses far above normal food use; some animal studies show effects at high doses. Default care_level "Low-Medium."
+- BHA/BHT: Evidence level Mixed. BHA is listed by some regulatory bodies as "reasonably anticipated" to be a carcinogen based on animal studies at high doses; BHT evidence is weaker. Default care_level "Medium."
+- Titanium dioxide: Evidence level Mixed. Banned as a food additive in the EU (2022) over inability to rule out genotoxicity concerns; still permitted in the US. Default care_level "Medium."
+- High-fructose corn syrup: Evidence level Established for "it's an added sugar, treat like one" — the "worse than other sugars" claim specifically is more Mixed/contested. Default care_level "Medium," tied to total added sugar amount.
+- Guar gum, xanthan gum, lecithin, and most emulsifiers/thickeners: Evidence level Limited for most people; main real concern is GI discomfort in sensitive individuals or at high doses. Default care_level "Low" unless gut sensitivity filter is selected.
 
 Read the ingredient list and/or nutrition panel in the attached photo. Then respond with ONLY a JSON object matching exactly this shape (no markdown fences, no prose before or after — your entire response must be valid JSON):
 
@@ -32,7 +47,7 @@ Read the ingredient list and/or nutrition panel in the attached photo. Then resp
   "swaps": ["practical swap suggestion 1", "practical swap suggestion 2"]
 }
 
-Only include ingredients worth flagging (skip totally uninteresting ones like water or salt unless sodium content matters). Cap ingredients at 6. Cap top_reasons at 3. Cap swaps at 3. ${filterText}`;
+Only include ingredients worth flagging (skip totally uninteresting ones like water or salt unless sodium content matters). Cap ingredients at 6. Cap top_reasons at 3. Cap swaps at 3. ${filterText}${kidsNote}`;
 }
 
 async function tryGemini(imageBase64, imageMediaType, promptText) {
@@ -138,4 +153,3 @@ export default async function handler(req, res) {
 
   return res.status(502).json({ error: `Both providers failed. ${errors.join(' | ')}`.slice(0, 500) });
 }
-
