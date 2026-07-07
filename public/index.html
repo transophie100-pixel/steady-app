@@ -22,6 +22,8 @@
     --okay-bg: #F4EAD3;
     --caution: #A24B3B;
     --caution-bg: #F3E1DA;
+    --rating-orange: #C1793D;
+    --rating-orange-bg: #F2E2D0;
     --radius: 4px;
   }
 
@@ -353,6 +355,76 @@
   .swaps ul { margin: 8px 0 0; padding-left: 18px; }
   .swaps li { font-size: 14px; margin-bottom: 6px; }
 
+  /* Nutrition per-serving breakdown */
+  .nutrition-panel {
+    margin-top: 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--card);
+    overflow: hidden;
+  }
+  .nutrition-panel .ledger-head { }
+  .nutrition-row {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .nutrition-row:last-child { border-bottom: none; }
+  .nutrition-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 13.5px;
+  }
+  .nutrition-name { font-weight: 600; }
+  .nutrition-amount {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--ink-soft);
+    font-size: 13px;
+  }
+  .nutrition-bars { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .nutrition-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+    color: var(--ink-soft);
+  }
+  .nutrition-bar-label {
+    font-family: 'IBM Plex Mono', monospace;
+    width: 46px;
+    flex-shrink: 0;
+  }
+  .nutrition-bar-track {
+    flex: 1;
+    height: 8px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .nutrition-bar-fill { height: 100%; border-radius: 3px; }
+  .nutrition-bar-pct { font-family: 'IBM Plex Mono', monospace; width: 38px; text-align: right; flex-shrink: 0; }
+
+  /* Per-filter ratings */
+  .rating-list { display: flex; flex-direction: column; gap: 8px; }
+  .rating-card {
+    display: flex;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+  }
+  .rating-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    flex-shrink: 0; margin-top: 4px;
+  }
+  .rating-dot.red { background: var(--caution); }
+  .rating-dot.orange { background: var(--rating-orange); }
+  .rating-dot.yellow { background: var(--okay); }
+  .rating-dot.green { background: var(--good); }
+  .rating-filter-name { font-weight: 600; font-size: 13.5px; }
+  .rating-note { font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
+
   .reset-row { margin-top: 26px; text-align: center; }
   .reset-row button {
     background: none; border: none;
@@ -393,13 +465,13 @@
   <div class="section-label" id="filtersLabel">What matters to you? (optional)</div>
   <div class="chips" id="chips">
     <div class="chip" data-v="blood sugar / diabetes">Blood sugar</div>
-    <div class="chip" data-v="gut sensitivity or IBD">Gut sensitivity</div>
     <div class="chip" data-v="feeding a kid, kids' lunchbox">Kids' lunchbox</div>
-    <div class="chip" data-v="pregnancy">Pregnancy</div>
     <div class="chip" data-v="weight loss goals">Weight loss</div>
     <div class="chip" data-v="high blood pressure / sodium sensitivity">High blood pressure</div>
     <div class="chip" data-v="heart disease / cardiovascular risk">Heart disease</div>
-    <div class="chip" data-v="bloating or general GI discomfort">Bloating / GI</div>
+    <div class="chip" data-v="high cholesterol / cholesterol management">Cholesterol</div>
+    <div class="chip" data-v="common allergens: wheat/gluten, dairy, tree nuts/peanuts, soy">Common allergens</div>
+    <div class="chip" data-v="gut health: fiber, polyphenols, antioxidants, prebiotics">Gut health</div>
   </div>
   <div class="chips" id="skinChips" style="display:none;">
     <div class="chip" data-v="acne-prone skin">Acne-prone</div>
@@ -407,9 +479,9 @@
     <div class="chip" data-v="eczema or dermatitis">Eczema / dermatitis</div>
     <div class="chip" data-v="rosacea">Rosacea</div>
     <div class="chip" data-v="fragrance sensitivity or allergy">Fragrance sensitivity</div>
-    <div class="chip" data-v="pregnancy or breastfeeding">Pregnancy</div>
+    <div class="chip" data-v="hormone disruptors (endocrine disruptors)">Hormone disruptors</div>
     <div class="chip" data-v="dry or dehydrated skin">Dry skin</div>
-    <div class="chip" data-v="oily or combination skin">Oily / combination</div>
+    <div class="chip" data-v="oily skin">Oily</div>
   </div>
 
   <div class="btn-row">
@@ -445,7 +517,7 @@ const filtersLabel = document.getElementById('filtersLabel');
 
 let imageBase64 = null;
 let imageMediaType = null;
-const selectedFilters = new Set();
+const selectedFilters = new Map(); // label -> detail
 let currentMode = 'food';
 
 const modeCopy = {
@@ -459,7 +531,7 @@ const modeCopy = {
     desc: "Snap a photo of any skincare ingredient list and get a calm, evidence-based read on what's actually worth paying attention to.",
     dzTitle: 'Add a photo of the ingredient list',
     dzSub: 'The back of the bottle/tube usually has it',
-    filtersLabel: "What's your skin like? (optional)"
+    filtersLabel: "What are you looking for? (optional)"
   }
 };
 
@@ -487,9 +559,10 @@ skinChipsEl.addEventListener('click', (e) => {
   const chip = e.target.closest('.chip');
   if (!chip) return;
   chip.classList.toggle('on');
-  const v = chip.dataset.v;
-  if (selectedFilters.has(v)) selectedFilters.delete(v);
-  else selectedFilters.add(v);
+  const label = chip.textContent.trim();
+  const detail = chip.dataset.v;
+  if (selectedFilters.has(label)) selectedFilters.delete(label);
+  else selectedFilters.set(label, detail);
 });
 
 
@@ -497,9 +570,10 @@ chipsEl.addEventListener('click', (e) => {
   const chip = e.target.closest('.chip');
   if (!chip) return;
   chip.classList.toggle('on');
-  const v = chip.dataset.v;
-  if (selectedFilters.has(v)) selectedFilters.delete(v);
-  else selectedFilters.add(v);
+  const label = chip.textContent.trim();
+  const detail = chip.dataset.v;
+  if (selectedFilters.has(label)) selectedFilters.delete(label);
+  else selectedFilters.set(label, detail);
 });
 
 fileInput.addEventListener('change', () => {
@@ -583,7 +657,8 @@ async function analyzeLabel() {
       body: JSON.stringify({
         imageBase64: imageBase64,
         imageMediaType: imageMediaType,
-        filters: Array.from(selectedFilters),
+        filterLabels: Array.from(selectedFilters.keys()),
+        filterDetails: Array.from(selectedFilters.values()),
         mode: currentMode
       })
     });
@@ -627,6 +702,75 @@ function esc(s) {
   return d.innerHTML;
 }
 
+const DAILY_VALUES = {
+  sugar: { women: 25, men: 36, unit: 'g', name: 'Added sugar' },
+  sodium: { women: 2300, men: 2300, unit: 'mg', name: 'Sodium' },
+  cholesterol: { women: 300, men: 300, unit: 'mg', name: 'Cholesterol' }
+};
+
+function pctBarColor(pct) {
+  if (pct > 100) return 'var(--caution)';
+  if (pct > 75) return 'var(--rating-orange)';
+  if (pct > 40) return 'var(--okay)';
+  return 'var(--good)';
+}
+
+function renderNutritionPanel(nutrition) {
+  if (!nutrition) return '';
+  const rows = [
+    { key: 'cholesterol_mg', ref: DAILY_VALUES.cholesterol, value: nutrition.cholesterol_mg },
+    { key: 'sugar_g', ref: DAILY_VALUES.sugar, value: nutrition.sugar_g },
+    { key: 'sodium_mg', ref: DAILY_VALUES.sodium, value: nutrition.sodium_mg }
+  ].filter(r => r.value !== null && r.value !== undefined);
+
+  if (!rows.length) return '';
+
+  let html = `<div class="section-label">Per serving${nutrition.serving_note ? ' — ' + esc(nutrition.serving_note) : ''}</div><div class="nutrition-panel">`;
+  rows.forEach(row => {
+    const womenPct = Math.round((row.value / row.ref.women) * 100);
+    const menPct = Math.round((row.value / row.ref.men) * 100);
+    html += `
+      <div class="nutrition-row">
+        <div class="nutrition-top">
+          <span class="nutrition-name">${esc(row.ref.name)}</span>
+          <span class="nutrition-amount">${row.value}${row.ref.unit}</span>
+        </div>
+        <div class="nutrition-bars">
+          <div class="nutrition-bar-row">
+            <span class="nutrition-bar-label">Women</span>
+            <div class="nutrition-bar-track"><div class="nutrition-bar-fill" style="width:${Math.min(womenPct, 100)}%; background:${pctBarColor(womenPct)};"></div></div>
+            <span class="nutrition-bar-pct">${womenPct}%</span>
+          </div>
+          <div class="nutrition-bar-row">
+            <span class="nutrition-bar-label">Men</span>
+            <div class="nutrition-bar-track"><div class="nutrition-bar-fill" style="width:${Math.min(menPct, 100)}%; background:${pctBarColor(menPct)};"></div></div>
+            <span class="nutrition-bar-pct">${menPct}%</span>
+          </div>
+        </div>
+      </div>`;
+  });
+  html += `</div>`;
+  html += `<p style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">Added sugar limits differ by sex (AHA guidance); sodium and cholesterol guidelines are the same for most adults regardless of sex — shown both ways for consistency.</p>`;
+  return html;
+}
+
+function renderFilterRatings(ratings) {
+  if (!ratings || !ratings.length) return '';
+  let html = `<div class="section-label">How it fits what you care about</div><div class="rating-list">`;
+  ratings.forEach(r => {
+    html += `
+      <div class="rating-card">
+        <span class="rating-dot ${esc(r.rating)}"></span>
+        <div>
+          <div class="rating-filter-name">${esc(r.filter)}</div>
+          <div class="rating-note">${esc(r.note)}</div>
+        </div>
+      </div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
 function renderResults(r) {
   const stampLetter = { good: 'OK', okay: '~', caution: '!' }[r.verdict] || '~';
   const verdictWord = { good: 'Good everyday option', okay: 'Fine sometimes', caution: 'Occasional food' }[r.verdict] || 'Read the details';
@@ -651,6 +795,9 @@ function renderResults(r) {
     });
     html += `</ul>`;
   }
+
+  html += renderFilterRatings(r.filter_ratings);
+  html += renderNutritionPanel(r.nutrition_per_serving);
 
   if (r.ingredients && r.ingredients.length) {
     html += `<div class="section-label">Ingredient ledger</div><div class="ledger">

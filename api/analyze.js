@@ -20,16 +20,39 @@ const RESPONSE_SHAPE = `{
       "note": "1-2 sentence calm explanation of what it is and who, if anyone, should care"
     }
   ],
-  "swaps": ["practical swap suggestion 1", "practical swap suggestion 2"]
+  "swaps": ["practical swap suggestion 1", "practical swap suggestion 2"],
+  "nutrition_per_serving": {
+    "serving_note": "e.g. 'per 1 cup (240ml)', taken from the label; empty string if not visible",
+    "cholesterol_mg": number or null,
+    "sugar_g": number or null,
+    "sodium_mg": number or null
+  },
+  "filter_ratings": [
+    {
+      "filter": "the exact filter label as given to you, verbatim",
+      "rating": "red" | "orange" | "yellow" | "green",
+      "note": "one short, specific sentence explaining the rating for this particular concern"
+    }
+  ]
 }`;
 
-function buildFoodPrompt(filters) {
-  const filterList = filters || [];
-  const filterText = filterList.length
-    ? `The person specifically cares about: ${filterList.join(', ')}. Weight your verdict and notes toward these priorities.`
-    : `The person hasn't specified priorities — give a balanced, general-audience read.`;
+const RATING_SCALE_TEXT = `For "filter_ratings," produce one entry for each filter the person selected (use the filter label exactly as given). Rate how this specific product fits that specific concern, using this reworked scale (use these exact rating values, but write natural, varied notes — don't just repeat the scale name):
 
-  const kidsFocus = filterList.some(f => /kid|lunchbox/i.test(f));
+- "red" = best treated as a rare, occasional thing for this concern
+- "orange" = fine in moderation for this concern, not an everyday choice
+- "yellow" = a solid, reasonable everyday choice for this concern
+- "green" = genuinely great for this concern, no real limit worth worrying about
+
+Base each rating on the actual product in the photo, not a generic assumption about the category.`;
+
+function buildFoodPrompt(filterLabels, filterDetails) {
+  const labels = filterLabels || [];
+  const details = filterDetails || [];
+  const filterText = labels.length
+    ? `The person specifically cares about: ${labels.map((l, i) => `${l} (${details[i] || l})`).join('; ')}. Weight your verdict and notes toward these priorities, and produce a filter_ratings entry for each one.`
+    : `The person hasn't specified priorities — give a balanced, general-audience read, and leave filter_ratings as an empty array.`;
+
+  const kidsFocus = labels.some(f => /kid|lunchbox/i.test(f));
   const kidsNote = kidsFocus
     ? `\n\nThe person selected "Kids' lunchbox." For synthetic dyes specifically (Red 40, Yellow 5, Yellow 6, Blue 1, etc.), raise care_level to at least "Medium" — the Southampton study and subsequent reviews found a real (if inconsistent) link to hyperactivity in some children, which is why the EU requires a warning label on foods containing them. Don't say "no big deal" for dyes in this context.`
     : '';
@@ -45,7 +68,11 @@ Ground your notes on these commonly-flagged ingredients in this specific calibra
 - BHA/BHT: Evidence level Mixed. BHA is listed by some regulatory bodies as "reasonably anticipated" to be a carcinogen based on animal studies at high doses; BHT evidence is weaker. Default care_level "Medium."
 - Titanium dioxide: Evidence level Mixed. Banned as a food additive in the EU (2022) over inability to rule out genotoxicity concerns; still permitted in the US. Default care_level "Medium."
 - High-fructose corn syrup: Evidence level Established for "it's an added sugar, treat like one" — the "worse than other sugars" claim specifically is more Mixed/contested. Default care_level "Medium," tied to total added sugar amount.
-- Guar gum, xanthan gum, lecithin, and most emulsifiers/thickeners: Evidence level Limited for most people; main real concern is GI discomfort in sensitive individuals or at high doses. Default care_level "Low" unless gut sensitivity filter is selected.
+- Guar gum, xanthan gum, lecithin, and most emulsifiers/thickeners: Evidence level Limited for most people; main real concern is GI discomfort in sensitive individuals or at high doses. Default care_level "Low" unless the person seems concerned about digestion.
+
+For "nutrition_per_serving": read the actual cholesterol, sugar (use added sugar if the label distinguishes it, otherwise total sugar), and sodium values per serving directly off the nutrition panel. Use null for any value not visible in the photo. Do not estimate or guess if it's not shown.
+
+${RATING_SCALE_TEXT}
 
 Read the ingredient list and/or nutrition panel in the attached photo. Then respond with ONLY a JSON object matching exactly this shape (no markdown fences, no prose before or after — your entire response must be valid JSON):
 
@@ -54,20 +81,16 @@ ${RESPONSE_SHAPE}
 Only include ingredients worth flagging (skip totally uninteresting ones like water or salt unless sodium content matters). Cap ingredients at 6. Cap top_reasons at 3. Cap swaps at 3. ${filterText}${kidsNote}`;
 }
 
-function buildSkincarePrompt(filters) {
-  const filterList = filters || [];
-  const filterText = filterList.length
-    ? `The person specifically cares about: ${filterList.join(', ')}. Weight your verdict and notes toward these priorities.`
-    : `The person hasn't specified priorities — give a balanced, general-audience read.`;
+function buildSkincarePrompt(filterLabels, filterDetails) {
+  const labels = filterLabels || [];
+  const details = filterDetails || [];
+  const filterText = labels.length
+    ? `The person specifically cares about: ${labels.map((l, i) => `${l} (${details[i] || l})`).join('; ')}. Weight your verdict and notes toward these priorities, and produce a filter_ratings entry for each one.`
+    : `The person hasn't specified priorities — give a balanced, general-audience read, and leave filter_ratings as an empty array.`;
 
-  const sensitiveFocus = filterList.some(f => /sensitive|reactive|eczema|rosacea|fragrance/i.test(f));
+  const sensitiveFocus = labels.some(f => /sensitive|reactive|eczema|rosacea|fragrance/i.test(f));
   const sensitiveNote = sensitiveFocus
     ? `\n\nThe person flagged sensitive/reactive skin, eczema, rosacea, or fragrance sensitivity. Raise care_level for fragrance/parfum, essential oils, and denatured alcohol to at least "Medium" in this context — these are the most common real-world irritants and allergens for reactive skin, more so than preservatives.`
-    : '';
-
-  const pregnancyFocus = filterList.some(f => /pregnan/i.test(f));
-  const pregnancyNote = pregnancyFocus
-    ? `\n\nThe person flagged pregnancy/breastfeeding. Retinoids (retinol, retinal, tretinoin, adapalene) and high-dose salicylic acid should be flagged "High" care_level with a clear note to check with an OB — this is genuinely established guidance, not overcaution.`
     : '';
 
   return `You are a calm, evidence-based skincare ingredient interpreter. Your voice is the opposite of fear-based "clean beauty" scanner apps: no alarmism, no "chemical = bad" framing, no treating every unpronounceable name as dangerous. You give context, not verdicts dressed up as facts. You acknowledge uncertainty honestly, but you also don't undersell ingredients with real, established evidence behind them (fragrance and essential oils are genuinely the top causes of cosmetic allergic reactions — don't soften that to sound balanced).
@@ -79,16 +102,21 @@ Ground your notes on these commonly-flagged ingredients in this specific calibra
 - Essential oils (lavender, tea tree, citrus oils, etc.): Evidence level Established as significant contact allergens/sensitizers despite "natural" framing. Default care_level "Medium," higher for reactive skin.
 - Sulfates (SLS, SLES): Evidence level Mixed/Limited for lasting harm; can be drying or irritating, especially in leave-on products or for dry/sensitive skin. Rinse-off products (shampoo, cleanser) are lower concern than leave-on. Default care_level "Low-Medium."
 - Silicones (dimethicone, cyclopentasiloxane): Evidence level Limited for the "clogs pores" claim for most people; mainly texture/occlusive agents. Default care_level "Low," "Medium" only if acne-prone and product is heavy/occlusive.
-- Retinoids (retinol, retinal, tretinoin, adapalene): Evidence level Established as effective anti-aging/acne actives; genuinely require sun protection and are genuinely contraindicated in pregnancy. Default care_level "Medium," "High" for pregnancy.
+- Retinoids (retinol, retinal, tretinoin, adapalene): Evidence level Established as effective anti-aging/acne actives; genuinely require sun protection. Default care_level "Medium."
 - Chemical exfoliants (glycolic acid, lactic acid, salicylic acid): Evidence level Established as effective; increase sun sensitivity, generally fine with SPF. Default care_level "Low-Medium."
 - Denatured alcohol (alcohol denat.): Evidence level Mixed; can be drying at high concentrations, less concerning in small amounts near the end of an ingredient list. Default care_level "Low-Medium," higher for dry/sensitive skin.
-- Phthalates: Evidence level Established as worth avoiding where possible, especially in pregnancy; largely phased out of modern formulations in regulated markets but still worth flagging if listed. Default care_level "Medium-High," "High" for pregnancy.
+- Phthalates: Evidence level Established as worth avoiding where possible; largely phased out of modern formulations in regulated markets but still worth flagging if listed. Default care_level "Medium-High."
+- Potential hormone/endocrine disruptors (oxybenzone, certain parabens at high exposure, some phthalates, triclosan): Evidence level Mixed overall — most single-product exposure is low, and regulatory bodies differ on how seriously to weigh this, but it's a real area of ongoing research, not fringe. Default care_level "Medium," and don't dismiss it outright.
+
+For "nutrition_per_serving": this doesn't apply to skincare — always return { "serving_note": "", "cholesterol_mg": null, "sugar_g": null, "sodium_mg": null }.
+
+${RATING_SCALE_TEXT}
 
 Read the ingredient list on the attached photo (usually on the back/bottom of the packaging). Then respond with ONLY a JSON object matching exactly this shape (no markdown fences, no prose before or after — your entire response must be valid JSON):
 
 ${RESPONSE_SHAPE}
 
-For "swaps," suggest practical alternative product types or routines rather than specific brand names. Only include ingredients worth flagging (skip totally uninteresting ones like water/aqua or plain glycerin). Cap ingredients at 6. Cap top_reasons at 3. Cap swaps at 3. ${filterText}${sensitiveNote}${pregnancyNote}`;
+For "swaps," suggest practical alternative product types or routines rather than specific brand names. Only include ingredients worth flagging (skip totally uninteresting ones like water/aqua or plain glycerin). Cap ingredients at 6. Cap top_reasons at 3. Cap swaps at 3. ${filterText}${sensitiveNote}`;
 }
 
 async function tryGemini(imageBase64, imageMediaType, promptText) {
@@ -162,13 +190,15 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { imageBase64, imageMediaType, filters, mode } = req.body || {};
+  const { imageBase64, imageMediaType, filterLabels, filterDetails, mode } = req.body || {};
 
   if (!imageBase64 || !imageMediaType) {
     return res.status(400).json({ error: 'Missing image data' });
   }
 
-  const promptText = mode === 'skincare' ? buildSkincarePrompt(filters) : buildFoodPrompt(filters);
+  const promptText = mode === 'skincare'
+    ? buildSkincarePrompt(filterLabels, filterDetails)
+    : buildFoodPrompt(filterLabels, filterDetails);
   const errors = [];
 
   // Primary: Gemini, with two quick retries if it's just overloaded.
