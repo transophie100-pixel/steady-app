@@ -325,6 +325,12 @@
   .ing-tag.Low { background: var(--good-bg); color: var(--good); }
   .ing-tag.Medium { background: var(--okay-bg); color: var(--okay); }
   .ing-tag.High { background: var(--caution-bg); color: var(--caution); }
+  .ing-tag.ewg-tag {
+    background: var(--rating-orange-bg);
+    color: var(--rating-orange);
+    border: 1px solid var(--rating-orange);
+  }
+  .ing-detail a { color: var(--olive); }
 
   .ing-detail {
     display: none;
@@ -803,11 +809,16 @@ function renderResults(r) {
     html += `<div class="section-label">Ingredient ledger</div><div class="ledger">
       <div class="ledger-head">Worth knowing about</div>`;
     r.ingredients.forEach((ing, i) => {
+      const ewgVal = Number(ing.ewg_estimate);
+      const ewgValid = ing.ewg_estimate !== null && ing.ewg_estimate !== undefined && !isNaN(ewgVal);
+      const ewgHigh = ewgValid && ewgVal > 3;
+      const ewgLink = `https://www.ewg.org/skindeep/search/?search=${encodeURIComponent(ing.name)}`;
       html += `
         <div class="ing-row" data-idx="${i}">
           <div class="ing-summary" onclick="this.parentElement.classList.toggle('open')">
             <span class="ing-name">${esc(ing.name)}</span>
             <span class="ing-leader"></span>
+            ${ewgHigh ? `<span class="ing-tag ewg-tag">EWG ~${esc(ewgVal)}/10</span>` : ''}
             <span class="ing-tag ${esc(ing.care_level)}">${esc(ing.care_level)} concern</span>
           </div>
           <div class="ing-detail">
@@ -815,6 +826,9 @@ function renderResults(r) {
               <dt>Why it's used</dt><dd>${esc(ing.role)}</dd>
               <dt>Evidence level</dt><dd>${esc(ing.evidence_level)}</dd>
               <dt>Should you care?</dt><dd>${esc(ing.note)}</dd>
+              ${ewgValid ? `
+              <dt>EWG Skin Deep (estimated)</dt>
+              <dd>~${esc(ewgVal)}/10 hazard score — this is an approximation, not a live lookup. <a href="${ewgLink}" target="_blank" rel="noopener">Check the real rating on EWG →</a></dd>` : ''}
             </dl>
           </div>
         </div>`;

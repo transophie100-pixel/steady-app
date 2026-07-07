@@ -17,7 +17,8 @@ const RESPONSE_SHAPE = `{
       "role": "why it's in there, short phrase",
       "evidence_level": "Established" | "Mixed" | "Limited",
       "care_level": "Low" | "Medium" | "High",
-      "note": "1-2 sentence calm explanation of what it is and who, if anyone, should care"
+      "note": "1-2 sentence calm explanation of what it is and who, if anyone, should care",
+      "ewg_estimate": number from 1-10 or null
     }
   ],
   "swaps": ["practical swap suggestion 1", "practical swap suggestion 2"],
@@ -72,6 +73,8 @@ Ground your notes on these commonly-flagged ingredients in this specific calibra
 
 For "nutrition_per_serving": read the actual cholesterol, sugar (use added sugar if the label distinguishes it, otherwise total sugar), and sodium values per serving directly off the nutrition panel. Use null for any value not visible in the photo. Do not estimate or guess if it's not shown.
 
+Always set "ewg_estimate" to null for every ingredient — EWG's Skin Deep database only covers cosmetics/personal care, not food.
+
 ${RATING_SCALE_TEXT}
 
 Read the ingredient list and/or nutrition panel in the attached photo. Then respond with ONLY a JSON object matching exactly this shape (no markdown fences, no prose before or after — your entire response must be valid JSON):
@@ -109,6 +112,22 @@ Ground your notes on these commonly-flagged ingredients in this specific calibra
 - Potential hormone/endocrine disruptors (oxybenzone, certain parabens at high exposure, some phthalates, triclosan): Evidence level Mixed overall — most single-product exposure is low, and regulatory bodies differ on how seriously to weigh this, but it's a real area of ongoing research, not fringe. Default care_level "Medium," and don't dismiss it outright.
 
 For "nutrition_per_serving": this doesn't apply to skincare — always return { "serving_note": "", "cholesterol_mg": null, "sugar_g": null, "sodium_mg": null }.
+
+For "ewg_estimate": give your best approximation of what EWG's Skin Deep database would likely rate this ingredient's hazard score (1-10 scale, higher = more concern), based on your general knowledge of how EWG has typically rated common cosmetic ingredients. Use these known anchor points to calibrate (these are real, well-established EWG ratings, use them directly when the ingredient matches):
+
+- Fragrance / parfum: ~8 (EWG rates this high due to allergen/sensitization concerns and lack of disclosure)
+- Retinol / retinyl palmitate: ~6-9 (EWG rates Vitamin A compounds high due to developmental toxicity data in high-dose studies)
+- Oxybenzone: ~8 (endocrine disruption flags)
+- Triclosan: ~7
+- Formaldehyde-releasing preservatives (DMDM hydantoin, quaternium-15, imidazolidinyl urea): ~7-8
+- Methylparaben: ~4, Propylparaben/Butylparaben: ~4-6 (EWG rates these moderate-high despite regulatory bodies calling them safe — this is a real EWG/regulatory disagreement, reflect EWG's actual number here even though it differs from your own care_level above)
+- Sodium Lauryl Sulfate (SLS): ~1-3, Sodium Laureth Sulfate (SLES): ~3-4
+- Dimethicone and other silicones: ~1-3
+- Phthalates (when listed, e.g. DBP, DEP): ~4-8 depending on the specific one
+- Glycolic acid / lactic acid / salicylic acid: ~2-4
+- Essential oils (lavender, tea tree, citrus): ~2-4 individually, but flag allergen concern in your note regardless of the number
+
+For any ingredient not covered above, give your genuine best estimate rather than defaulting to null — only use null if the ingredient is truly obscure and you have no basis to estimate at all. Respond with ewg_estimate as a plain number (not a string, not in quotes).
 
 ${RATING_SCALE_TEXT}
 
