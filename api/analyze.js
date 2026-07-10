@@ -7,8 +7,8 @@
 // vision model, so a single provider's bad moment doesn't break the app.
 
 const RESPONSE_SHAPE = `{
-  "verdict": "good" | "okay" | "caution",
-  "verdict_line": "one calm sentence, the overall practical takeaway",
+  "star_rating": integer 1-5,
+  "verdict_line": "one calm, specific sentence — the overall practical takeaway, following the tone guidance below",
   "personalization_note": "1-2 sentences tailored to the person's stated priorities, or empty string if none given",
   "top_reasons": ["short reason 1", "short reason 2", "short reason 3 (optional)"],
   "ingredients": [
@@ -21,7 +21,21 @@ const RESPONSE_SHAPE = `{
       "ewg_estimate": number from 1-10 or null
     }
   ],
-  "swaps": ["practical swap suggestion 1", "practical swap suggestion 2"],
+  "star_deductions": [
+    {
+      "category": "short label for the type of concern, e.g. 'Artificial colors', 'Artificial sweeteners', 'Synthetic preservatives', 'Added sugar', 'Sodium'",
+      "items": ["exact ingredient names in this category as they appear on the label"],
+      "note": "one short sentence on why this cost points, following the tone guidance below"
+    }
+  ],
+  "better_alternatives": [
+    {
+      "star_rating": integer 1-5,
+      "category_description": "short lowercase phrase describing the type of alternative, e.g. 'a lentil-based chip'",
+      "example_brands": ["Brand 1", "Brand 2"],
+      "why": "one short sentence on why this rates better"
+    }
+  ],
   "nutrition_per_serving": {
     "serving_note": "e.g. 'per 1 cup (240ml)', taken from the label; empty string if not visible",
     "cholesterol_mg": number or null,
@@ -36,6 +50,20 @@ const RESPONSE_SHAPE = `{
     }
   ]
 }`;
+
+const TONE_TEXT = `When writing "verdict_line" and any "note" field (including star_deductions notes), follow this pattern: name the specific ingredients actually responsible rather than a vague judgment, then ground it with one sentence on what the evidence does and doesn't show. For example: "This is fine as an occasional food. The main reason it isn't recommended as an everyday choice is that it contains several synthetic additives (BHA, BHT, TBHQ, Red 40, Yellow 5, and aspartame). Current evidence doesn't mean one serving is harmful, but frequent intake of foods high in these additives may not align with a whole-food dietary pattern." Never use words like "bad," "toxic," "chemical-laden," or "junk" — describe what's actually there and let the person draw their own conclusion.`;
+
+const STAR_RATING_TEXT = `For "star_rating," score the product 1-5 whole stars using this calibration:
+
+- 5 stars: whole or minimally processed, no concerning additives
+- 4 stars: light processing or one mild-concern ingredient, nothing worth real hesitation
+- 3 stars: a reasonable everyday-adjacent product with a couple of ingredients worth knowing about (e.g. added sugar, sodium, one synthetic additive)
+- 2 stars: several synthetic additives, artificial colors/sweeteners, or preservatives stacked together — best treated as an occasional choice
+- 1 star: heavily processed with multiple flagged ingredients and little offsetting nutritional benefit
+
+For "star_deductions," list each concrete category of ingredient that cost points, the exact ingredient names in that category as they appear on the label, and one short sentence why (per the tone guidance above). Leave star_deductions as an empty array only if the product genuinely has no concerning categories (5 stars).`;
+
+const BETTER_ALTERNATIVES_TEXT = `For "better_alternatives," if star_rating is below 5, suggest up to 3 better-fitting alternatives. For each one, first describe the general category/type (e.g. "a lentil-based chip"), then name 1-2 real example brands people can actually look for (e.g. "Plentils, Enjoy Life"). These star ratings and brand examples are your general best-effort estimate from typical formulations, not a live scan of that exact product — the same kind of honest approximation used elsewhere in this app (comparable to an EWG estimate: a real, calibrated guess, clearly not a verified lookup). Leave better_alternatives as an empty array if star_rating is already 5.`;
 
 const RATING_SCALE_TEXT = `For "filter_ratings," produce one entry for each filter the person selected (use the filter label exactly as given). Rate how this specific product fits that specific concern, using this reworked scale (use these exact rating values, but write natural, varied notes — don't just repeat the scale name):
 
@@ -75,6 +103,12 @@ For "nutrition_per_serving": read the actual cholesterol, sugar (use added sugar
 
 Always set "ewg_estimate" to null for every ingredient — EWG's Skin Deep database only covers cosmetics/personal care, not food.
 
+${TONE_TEXT}
+
+${STAR_RATING_TEXT}
+
+${BETTER_ALTERNATIVES_TEXT}
+
 ${RATING_SCALE_TEXT}
 
 ${productDataText
@@ -83,7 +117,7 @@ ${productDataText
 
 ${RESPONSE_SHAPE}
 
-Only include ingredients worth flagging (skip totally uninteresting ones like water or salt unless sodium content matters). Cap ingredients at 6. Cap top_reasons at 3. Cap swaps at 3. ${filterText}${kidsNote}`;
+Only include ingredients worth flagging (skip totally uninteresting ones like water or salt unless sodium content matters). Cap ingredients at 6. Cap top_reasons at 3. Cap star_deductions and better_alternatives at 3 each. ${filterText}${kidsNote}`;
 }
 
 function buildSkincarePrompt(filterLabels, filterDetails) {
@@ -131,13 +165,19 @@ For "ewg_estimate": give your best approximation of what EWG's Skin Deep databas
 
 For any ingredient not covered above, give your genuine best estimate rather than defaulting to null — only use null if the ingredient is truly obscure and you have no basis to estimate at all. Respond with ewg_estimate as a plain number (not a string, not in quotes).
 
+${TONE_TEXT}
+
+${STAR_RATING_TEXT}
+
+${BETTER_ALTERNATIVES_TEXT}
+
 ${RATING_SCALE_TEXT}
 
 Read the ingredient list on the attached photo (usually on the back/bottom of the packaging). Then respond with ONLY a JSON object matching exactly this shape (no markdown fences, no prose before or after — your entire response must be valid JSON):
 
 ${RESPONSE_SHAPE}
 
-For "swaps," suggest practical alternative product types or routines rather than specific brand names. Only include ingredients worth flagging (skip totally uninteresting ones like water/aqua or plain glycerin). Cap ingredients at 6. Cap top_reasons at 3. Cap swaps at 3. ${filterText}${sensitiveNote}`;
+Only include ingredients worth flagging (skip totally uninteresting ones like water/aqua or plain glycerin). Cap ingredients at 6. Cap top_reasons at 3. Cap star_deductions and better_alternatives at 3 each. ${filterText}${sensitiveNote}`;
 }
 
 async function tryGemini(imageBase64, imageMediaType, promptText) {

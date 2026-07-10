@@ -320,24 +320,21 @@
   .verdict-card {
     display: flex;
     gap: 18px;
-    align-items: center;
+    align-items: flex-start;
     background: var(--card);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: 20px;
   }
-  .stamp {
-    width: 64px; height: 64px; border-radius: 50%;
+  .star-badge {
     flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    font-family: 'Fraunces', serif;
-    font-weight: 600;
+    width: 92px;
+    text-align: center;
     font-size: 22px;
-    border: 3px solid currentColor;
+    letter-spacing: 2px;
+    color: var(--okay);
+    padding-top: 2px;
   }
-  .stamp.good { color: var(--good); }
-  .stamp.okay { color: var(--okay); }
-  .stamp.caution { color: var(--caution); }
 
   .verdict-text-label {
     font-family: 'IBM Plex Mono', monospace;
@@ -459,15 +456,53 @@
   }
   .ing-detail dd { margin: 2px 0 0; }
 
-  .swaps {
-    margin-top: 8px;
+  /* Star deductions */
+  .deduction-list { display: flex; flex-direction: column; gap: 8px; }
+  .deduction-card {
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+    background: var(--card);
+  }
+  .deduction-category { font-weight: 600; font-size: 13.5px; color: var(--caution); }
+  .deduction-items {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-top: 2px;
+  }
+  .deduction-note { font-size: 13px; color: var(--ink-soft); margin-top: 4px; }
+
+  /* Better alternatives */
+  .alt-disclaimer {
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    margin: -4px 0 8px;
+  }
+  .alt-list {
     border: 1px solid var(--line);
     border-radius: var(--radius);
     background: var(--card);
-    padding: 16px;
+    overflow: hidden;
   }
-  .swaps ul { margin: 8px 0 0; padding-left: 18px; }
-  .swaps li { font-size: 14px; margin-bottom: 6px; }
+  .alt-row { border-bottom: 1px solid var(--line); }
+  .alt-row:last-child { border-bottom: none; }
+  .alt-summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    cursor: pointer;
+  }
+  .alt-stars { color: var(--okay); font-size: 14px; flex-shrink: 0; letter-spacing: 1px; }
+  .alt-desc { font-size: 13.5px; flex: 1; }
+  .alt-detail {
+    display: none;
+    padding: 0 16px 14px 42px;
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+  .alt-row.open .alt-detail { display: block; }
 
   /* Nutrition per-serving breakdown */
   .nutrition-panel {
@@ -1059,15 +1094,52 @@ function renderFilterRatings(ratings) {
   return html;
 }
 
-function renderResults(r) {
-  const stampLetter = { good: 'OK', okay: '~', caution: '!' }[r.verdict] || '~';
-  const verdictWord = { good: 'Good everyday option', okay: 'Fine sometimes', caution: 'Occasional food' }[r.verdict] || 'Read the details';
+function renderStars(rating) {
+  const n = Math.max(0, Math.min(5, Math.round(Number(rating) || 0)));
+  return '★'.repeat(n) + '☆'.repeat(5 - n);
+}
 
+function renderStarDeductions(deductions) {
+  if (!deductions || !deductions.length) return '';
+  let html = `<div class="section-label">Lost points</div><div class="deduction-list">`;
+  deductions.forEach(d => {
+    html += `
+      <div class="deduction-card">
+        <div class="deduction-category">− ${esc(d.category)}</div>
+        ${d.items && d.items.length ? `<div class="deduction-items">${esc(d.items.join(', '))}</div>` : ''}
+        <div class="deduction-note">${esc(d.note)}</div>
+      </div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+function renderAlternatives(alts) {
+  if (!alts || !alts.length) return '';
+  let html = `<div class="section-label">Better options nearby</div>
+    <p class="alt-disclaimer">AI estimate based on typical formulations, not a live scan of these products.</p>
+    <div class="alt-list">`;
+  alts.forEach((a, i) => {
+    const brands = a.example_brands && a.example_brands.length ? ` (${a.example_brands.join(', ')})` : '';
+    html += `
+      <div class="alt-row" data-idx="${i}">
+        <div class="alt-summary" onclick="this.parentElement.classList.toggle('open')">
+          <span class="alt-stars">${renderStars(a.star_rating)}</span>
+          <span class="alt-desc">${esc(a.category_description)}${esc(brands)}</span>
+        </div>
+        <div class="alt-detail">${esc(a.why)}</div>
+      </div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+function renderResults(r) {
   let html = `
     <div class="verdict-card">
-      <div class="stamp ${esc(r.verdict)}">${stampLetter}</div>
+      <div class="star-badge">${renderStars(r.star_rating)}</div>
       <div>
-        <div class="verdict-text-label">${esc(verdictWord)}</div>
+        <div class="verdict-text-label">Score</div>
         <div class="verdict-line">${esc(r.verdict_line)}</div>
       </div>
     </div>`;
@@ -1084,6 +1156,7 @@ function renderResults(r) {
     html += `</ul>`;
   }
 
+  html += renderStarDeductions(r.star_deductions);
   html += renderFilterRatings(r.filter_ratings);
   html += renderNutritionPanel(r.nutrition_per_serving);
 
@@ -1118,11 +1191,7 @@ function renderResults(r) {
     html += `</div>`;
   }
 
-  if (r.swaps && r.swaps.length) {
-    html += `<div class="section-label">Better swaps</div><div class="swaps"><ul>`;
-    r.swaps.forEach(s => { html += `<li>${esc(s)}</li>`; });
-    html += `</ul></div>`;
-  }
+  html += renderAlternatives(r.better_alternatives);
 
   resultsEl.innerHTML = html;
   resultsEl.classList.add('on');
