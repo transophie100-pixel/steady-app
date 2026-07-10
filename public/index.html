@@ -558,12 +558,18 @@
     <div class="tagline">a calmer way<br/>to read a label</div>
   </header>
 
-  <p class="app-desc">Snap a photo of any product label and get a calm, evidence-based read on what's actually worth paying attention to.</p>
+  <p class="app-desc">Scan a barcode or snap a photo of any food label and get a calm, evidence-based read on what's actually worth paying attention to.</p>
 
   <div class="mode-tabs" id="modeTabs">
     <button class="mode-tab on" data-mode="food" type="button">Food</button>
     <button class="mode-tab" data-mode="skincare" type="button">Skincare</button>
   </div>
+
+  <div id="barcodeEntry">
+    <button class="scan-btn" id="scanBtn" type="button">Scan a barcode</button>
+  </div>
+
+  <div class="or-divider" id="orDivider">or</div>
 
   <label class="dropzone" id="dropzone">
     <input type="file" id="fileInput" accept="image/*" />
@@ -574,11 +580,6 @@
   <div class="preview-row" id="previewRow" style="display:none;">
     <img id="previewThumb" class="preview-thumb" />
     <div class="preview-name" id="previewName"></div>
-  </div>
-
-  <div id="barcodeEntry">
-    <div class="or-divider">or</div>
-    <button class="scan-btn" id="scanBtn" type="button">Scan a barcode instead</button>
   </div>
 
   <div class="section-label" id="filtersLabel">What matters to you? (optional)</div>
@@ -659,6 +660,7 @@ const scanOverlay = document.getElementById('scanOverlay');
 const scanCloseBtn = document.getElementById('scanCloseBtn');
 const scanVideo = document.getElementById('scanVideo');
 const scanStatus = document.getElementById('scanStatus');
+const orDivider = document.getElementById('orDivider');
 const manualBarcodeInput = document.getElementById('manualBarcodeInput');
 const manualBarcodeBtn = document.getElementById('manualBarcodeBtn');
 
@@ -671,9 +673,9 @@ let currentMode = 'food';
 
 const modeCopy = {
   food: {
-    desc: "Snap a photo of any food label and get a calm, evidence-based read on what's actually worth paying attention to.",
+    desc: "Scan a barcode or snap a photo of any food label and get a calm, evidence-based read on what's actually worth paying attention to.",
     dzTitle: 'Add a photo of the label',
-    dzSub: 'Ingredient list or nutrition panel — either works',
+    dzSub: "No barcode? Ingredient list or nutrition panel — either works",
     filtersLabel: 'What matters to you? (optional)'
   },
   skincare: {
@@ -693,6 +695,7 @@ modeTabs.addEventListener('click', (e) => {
   chipsEl.style.display = currentMode === 'food' ? 'flex' : 'none';
   skinChipsEl.style.display = currentMode === 'skincare' ? 'flex' : 'none';
   barcodeEntry.style.display = currentMode === 'food' ? 'block' : 'none';
+  orDivider.style.display = currentMode === 'food' ? 'block' : 'none';
 
   // Barcode lookups only make sense in food mode — a text-only "photo"
   // would otherwise get fed into the skincare prompt, which expects an image.
