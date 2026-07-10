@@ -6,6 +6,7 @@
 <title>Steady — a calmer way to read labels</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 <style>
   :root {
     --ink: #21281F;
@@ -104,6 +105,113 @@
     font-weight: 700;
   }
   .dz-sub { font-size: 13px; color: var(--ink-soft); }
+
+  .or-divider {
+    text-align: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 12px 0;
+  }
+
+  .scan-btn {
+    display: block;
+    width: 100%;
+    border: 1.5px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--card);
+    color: var(--ink);
+    font-family: 'Public Sans', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 12px 16px;
+    cursor: pointer;
+  }
+  .scan-btn:hover { border-color: var(--olive); }
+
+  /* Barcode scanner overlay */
+  .scan-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(33, 40, 31, 0.92);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .scan-overlay.on { display: flex; }
+  .scan-modal {
+    background: var(--card);
+    border-radius: var(--radius);
+    max-width: 420px;
+    width: 100%;
+    padding: 20px;
+  }
+  .scan-modal-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 12px;
+  }
+  .scan-modal-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 17px;
+  }
+  .scan-close {
+    background: none; border: none;
+    color: var(--ink-soft);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .scan-video-wrap {
+    position: relative;
+    background: #000;
+    border-radius: var(--radius);
+    overflow: hidden;
+    aspect-ratio: 4 / 3;
+  }
+  .scan-video-wrap video {
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  .scan-status {
+    margin-top: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-soft);
+    min-height: 16px;
+  }
+  .scan-manual {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+  .scan-manual-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 8px;
+  }
+  .scan-manual-row { display: flex; gap: 8px; }
+  .scan-manual-row input {
+    flex: 1;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    padding: 9px 10px;
+    border: 1.5px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--paper);
+    color: var(--ink);
+  }
+  .scan-manual-row input:focus { outline: none; border-color: var(--olive); }
 
   .preview-row {
     display: flex; gap: 12px; align-items: center;
@@ -468,6 +576,11 @@
     <div class="preview-name" id="previewName"></div>
   </div>
 
+  <div id="barcodeEntry">
+    <div class="or-divider">or</div>
+    <button class="scan-btn" id="scanBtn" type="button">Scan a barcode instead</button>
+  </div>
+
   <div class="section-label" id="filtersLabel">What matters to you? (optional)</div>
   <div class="chips" id="chips">
     <div class="chip" data-v="blood sugar / diabetes">Blood sugar</div>
@@ -502,6 +615,26 @@
 
 </div>
 
+<div class="scan-overlay" id="scanOverlay">
+  <div class="scan-modal">
+    <div class="scan-modal-head">
+      <div class="scan-modal-title">Scan a barcode</div>
+      <button class="scan-close" id="scanCloseBtn" type="button">Cancel</button>
+    </div>
+    <div class="scan-video-wrap">
+      <video id="scanVideo" muted playsinline></video>
+    </div>
+    <div class="scan-status" id="scanStatus">Point your camera at the barcode.</div>
+    <div class="scan-manual">
+      <div class="scan-manual-label">Camera not working? Type it in</div>
+      <div class="scan-manual-row">
+        <input type="text" id="manualBarcodeInput" inputmode="numeric" placeholder="e.g. 0123456789012" />
+        <button class="btn" id="manualBarcodeBtn" type="button">Look up</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 const fileInput = document.getElementById('fileInput');
 const dropzone = document.getElementById('dropzone');
@@ -520,9 +653,19 @@ const dzTitle = document.getElementById('dzTitle');
 const dzSub = document.getElementById('dzSub');
 const appDesc = document.querySelector('.app-desc');
 const filtersLabel = document.getElementById('filtersLabel');
+const barcodeEntry = document.getElementById('barcodeEntry');
+const scanBtn = document.getElementById('scanBtn');
+const scanOverlay = document.getElementById('scanOverlay');
+const scanCloseBtn = document.getElementById('scanCloseBtn');
+const scanVideo = document.getElementById('scanVideo');
+const scanStatus = document.getElementById('scanStatus');
+const manualBarcodeInput = document.getElementById('manualBarcodeInput');
+const manualBarcodeBtn = document.getElementById('manualBarcodeBtn');
 
 let imageBase64 = null;
 let imageMediaType = null;
+let sourceText = null;
+let codeReader = null;
 const selectedFilters = new Map(); // label -> detail
 let currentMode = 'food';
 
@@ -549,6 +692,11 @@ modeTabs.addEventListener('click', (e) => {
   modeTabs.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('on', t === tab));
   chipsEl.style.display = currentMode === 'food' ? 'flex' : 'none';
   skinChipsEl.style.display = currentMode === 'skincare' ? 'flex' : 'none';
+  barcodeEntry.style.display = currentMode === 'food' ? 'block' : 'none';
+
+  // Barcode lookups only make sense in food mode — a text-only "photo"
+  // would otherwise get fed into the skincare prompt, which expects an image.
+  if (currentMode !== 'food' && sourceText) resetUploadState();
 
   const copy = modeCopy[currentMode];
   appDesc.textContent = copy.desc;
@@ -585,6 +733,7 @@ chipsEl.addEventListener('click', (e) => {
 fileInput.addEventListener('change', () => {
   const file = fileInput.files[0];
   if (!file) return;
+  sourceText = null;
   errorBox.classList.remove('on');
 
   const reader = new FileReader();
@@ -633,11 +782,18 @@ fileInput.addEventListener('change', () => {
 
 clearBtn.addEventListener('click', () => resetAll());
 
-function resetAll() {
+function resetUploadState() {
   imageBase64 = null;
+  imageMediaType = null;
+  sourceText = null;
   fileInput.value = '';
+  previewThumb.style.display = '';
   previewRow.style.display = 'none';
   analyzeBtn.disabled = true;
+}
+
+function resetAll() {
+  resetUploadState();
   clearBtn.style.display = 'none';
   resultsEl.classList.remove('on');
   resultsEl.innerHTML = '';
@@ -649,7 +805,7 @@ function resetAll() {
 analyzeBtn.addEventListener('click', analyzeLabel);
 
 async function analyzeLabel() {
-  if (!imageBase64) return;
+  if (!imageBase64 && !sourceText) return;
   loading.firstChild.textContent = 'reading label';
   loading.classList.add('on');
   errorBox.classList.remove('on');
@@ -663,6 +819,7 @@ async function analyzeLabel() {
       body: JSON.stringify({
         imageBase64: imageBase64,
         imageMediaType: imageMediaType,
+        sourceText: sourceText,
         filterLabels: Array.from(selectedFilters.keys()),
         filterDetails: Array.from(selectedFilters.values()),
         mode: currentMode
@@ -699,6 +856,128 @@ async function analyzeLabel() {
   } finally {
     loading.classList.remove('on');
     analyzeBtn.disabled = false;
+  }
+}
+
+// --- Barcode scanning (food mode only) ---
+
+const BARCODE_HINTS = new Map();
+if (window.ZXing) {
+  BARCODE_HINTS.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+    ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
+    ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.UPC_E,
+    ZXing.BarcodeFormat.CODE_128
+  ]);
+}
+
+scanBtn.addEventListener('click', openScanner);
+scanCloseBtn.addEventListener('click', closeScanner);
+manualBarcodeBtn.addEventListener('click', () => {
+  const digits = manualBarcodeInput.value.replace(/[^0-9]/g, '');
+  if (!digits) return;
+  closeScanner();
+  lookupBarcode(digits);
+});
+manualBarcodeInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') manualBarcodeBtn.click();
+});
+
+async function openScanner() {
+  scanStatus.textContent = 'Point your camera at the barcode.';
+  manualBarcodeInput.value = '';
+  scanOverlay.classList.add('on');
+
+  if (!window.ZXing) {
+    scanStatus.textContent = "Camera scanner didn't load — use the manual entry below instead.";
+    return;
+  }
+
+  try {
+    codeReader = new ZXing.BrowserMultiFormatReader(BARCODE_HINTS);
+    codeReader.decodeFromConstraints(
+      { video: { facingMode: { ideal: 'environment' } } },
+      scanVideo,
+      (result, err) => {
+        if (result) {
+          const digits = result.getText().replace(/[^0-9]/g, '');
+          if (digits) {
+            closeScanner();
+            lookupBarcode(digits);
+          }
+        } else if (err && !(err instanceof ZXing.NotFoundException)) {
+          console.error(err);
+        }
+      }
+    );
+  } catch (err) {
+    console.error(err);
+    scanStatus.textContent = "Couldn't access the camera — use the manual entry below instead.";
+  }
+}
+
+function closeScanner() {
+  if (codeReader) {
+    codeReader.reset();
+    codeReader = null;
+  }
+  scanOverlay.classList.remove('on');
+}
+
+async function lookupBarcode(barcode) {
+  errorBox.classList.remove('on');
+  loading.firstChild.textContent = 'looking up product';
+  loading.classList.add('on');
+
+  try {
+    const response = await fetch(`/api/lookup-barcode?barcode=${encodeURIComponent(barcode)}`);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || `Lookup failed (${response.status})`);
+    }
+
+    const product = data.product;
+    if (!product.ingredients_text) {
+      throw new Error("Found the product but it has no ingredients listed on Open Food Facts — try a photo instead.");
+    }
+
+    const lines = [];
+    if (product.product_name) lines.push(`Product name: ${product.product_name}`);
+    if (product.brands) lines.push(`Brand: ${product.brands}`);
+    if (product.serving_size) lines.push(`Serving size: ${product.serving_size}`);
+    lines.push(`Ingredients: ${product.ingredients_text}`);
+
+    const n = product.nutriments || {};
+    const perServing = n.sugars_serving != null || n.sodium_serving != null || n.cholesterol_serving != null;
+    const nutrLines = [];
+    const sugar = perServing ? n.sugars_serving : n.sugars_100g;
+    const sodiumG = perServing ? n.sodium_serving : n.sodium_100g;
+    const cholesterolG = perServing ? n.cholesterol_serving : n.cholesterol_100g;
+    if (sugar != null) nutrLines.push(`sugar ${sugar}g`);
+    if (sodiumG != null) nutrLines.push(`sodium ${Math.round(sodiumG * 1000)}mg`);
+    if (cholesterolG != null) nutrLines.push(`cholesterol ${Math.round(cholesterolG * 1000)}mg`);
+    if (nutrLines.length) {
+      lines.push(`Nutrition (${perServing ? 'per serving' : 'per 100g, serving size not specified'}): ${nutrLines.join(', ')}`);
+    }
+
+    imageBase64 = null;
+    imageMediaType = null;
+    sourceText = lines.join('\n');
+
+    if (product.image_front_url) {
+      previewThumb.style.display = '';
+      previewThumb.src = product.image_front_url;
+    } else {
+      previewThumb.style.display = 'none';
+    }
+    previewName.textContent = [product.product_name, product.brands].filter(Boolean).join(' — ') || `Barcode ${barcode}`;
+    previewRow.style.display = 'flex';
+    analyzeBtn.disabled = false;
+  } catch (err) {
+    console.error(err);
+    errorBox.innerHTML = "Couldn't look up that barcode.<br/><span style='font-family: \"IBM Plex Mono\", monospace; font-size: 11px; opacity: .8;'>" + esc(err.message) + "</span>";
+    errorBox.classList.add('on');
+  } finally {
+    loading.classList.remove('on');
   }
 }
 

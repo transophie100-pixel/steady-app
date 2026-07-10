@@ -46,7 +46,7 @@ const RATING_SCALE_TEXT = `For "filter_ratings," produce one entry for each filt
 
 Base each rating on the actual product in the photo, not a generic assumption about the category.`;
 
-function buildFoodPrompt(filterLabels, filterDetails) {
+function buildFoodPrompt(filterLabels, filterDetails, productDataText) {
   const labels = filterLabels || [];
   const details = filterDetails || [];
   const filterText = labels.length
@@ -77,7 +77,9 @@ Always set "ewg_estimate" to null for every ingredient — EWG's Skin Deep datab
 
 ${RATING_SCALE_TEXT}
 
-Read the ingredient list and/or nutrition panel in the attached photo. Then respond with ONLY a JSON object matching exactly this shape (no markdown fences, no prose before or after — your entire response must be valid JSON):
+${productDataText
+    ? `The following product data was retrieved from a barcode lookup (Open Food Facts), not read from a photo. Analyze it exactly as you would a label photo:\n\n${productDataText}`
+    : `Read the ingredient list and/or nutrition panel in the attached photo.`} Then respond with ONLY a JSON object matching exactly this shape (no markdown fences, no prose before or after — your entire response must be valid JSON):
 
 ${RESPONSE_SHAPE}
 
@@ -139,6 +141,11 @@ For "swaps," suggest practical alternative product types or routines rather than
 }
 
 async function tryGemini(imageBase64, imageMediaType, promptText) {
+  const parts = [{ text: promptText }];
+  if (imageBase64) {
+    parts.push({ inline_data: { mime_type: imageMediaType, data: imageBase64 } });
+  }
+
   const response = await fetch(
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
     {
@@ -148,14 +155,7 @@ async function tryGemini(imageBase64, imageMediaType, promptText) {
         'x-goog-api-key': process.env.GEMINI_API_KEY
       },
       body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: promptText },
-              { inline_data: { mime_type: imageMediaType, data: imageBase64 } }
-            ]
-          }
-        ],
+        contents: [{ parts }],
         generationConfig: { responseMimeType: 'application/json' }
       })
     }
@@ -173,6 +173,13 @@ async function tryGemini(imageBase64, imageMediaType, promptText) {
 }
 
 async function tryGroq(imageBase64, imageMediaType, promptText) {
+  const content = imageBase64
+    ? [
+        { type: 'text', text: promptText },
+        { type: 'image_url', image_url: { url: `data:${imageMediaType};base64,${imageBase64}` } }
+      ]
+    : promptText;
+
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -181,15 +188,7 @@ async function tryGroq(imageBase64, imageMediaType, promptText) {
     },
     body: JSON.stringify({
       model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: promptText },
-            { type: 'image_url', image_url: { url: `data:${imageMediaType};base64,${imageBase64}` } }
-          ]
-        }
-      ]
+      messages: [{ role: 'user', content }]
     })
   });
 
@@ -209,15 +208,15 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { imageBase64, imageMediaType, filterLabels, filterDetails, mode } = req.body || {};
+  const { imageBase64, imageMediaType, sourceText, filterLabels, filterDetails, mode } = req.body || {};
 
-  if (!imageBase64 || !imageMediaType) {
-    return res.status(400).json({ error: 'Missing image data' });
+  if (!sourceText && (!imageBase64 || !imageMediaType)) {
+    return res.status(400).json({ error: 'Missing image data or product text' });
   }
 
   const promptText = mode === 'skincare'
     ? buildSkincarePrompt(filterLabels, filterDetails)
-    : buildFoodPrompt(filterLabels, filterDetails);
+    : buildFoodPrompt(filterLabels, filterDetails, sourceText);
   const errors = [];
 
   // Primary: Gemini, with two quick retries if it's just overloaded.
