@@ -319,31 +319,19 @@
 
   .verdict-card {
     display: flex;
-    gap: 18px;
-    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
     background: var(--card);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: 20px;
   }
   .star-badge {
-    flex-shrink: 0;
-    width: 92px;
-    text-align: center;
-    font-size: 22px;
-    letter-spacing: 2px;
+    font-size: 32px;
+    letter-spacing: 4px;
     color: var(--okay);
-    padding-top: 2px;
   }
 
-  .verdict-text-label {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-    color: var(--ink-soft);
-    margin-bottom: 4px;
-  }
   .verdict-line {
     font-family: 'Fraunces', serif;
     font-size: 19px;
@@ -1138,10 +1126,7 @@ function renderResults(r) {
   let html = `
     <div class="verdict-card">
       <div class="star-badge">${renderStars(r.star_rating)}</div>
-      <div>
-        <div class="verdict-text-label">Score</div>
-        <div class="verdict-line">${esc(r.verdict_line)}</div>
-      </div>
+      <div class="verdict-line">${esc(r.verdict_line)}</div>
     </div>`;
 
   if (r.personalization_note) {
