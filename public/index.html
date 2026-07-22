@@ -600,6 +600,95 @@
     color: var(--ink-soft);
     font-style: italic;
   }
+
+  /* Top nav / history toggle */
+  .top-nav { text-align: right; margin-bottom: 18px; }
+  .nav-link {
+    background: none;
+    border: none;
+    color: var(--olive);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: .02em;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  /* History list */
+  .history-empty {
+    padding: 30px 16px;
+    text-align: center;
+    color: var(--ink-soft);
+    font-size: 13.5px;
+    border: 1px dashed var(--line-strong);
+    border-radius: var(--radius);
+  }
+  .history-clear-row { text-align: right; margin-bottom: 10px; }
+  .history-list { display: flex; flex-direction: column; gap: 10px; }
+  .history-card {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--card);
+    overflow: hidden;
+  }
+  .history-summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    cursor: pointer;
+  }
+  .history-thumb {
+    width: 44px; height: 44px;
+    object-fit: cover;
+    border-radius: var(--radius);
+    border: 1px solid var(--line-strong);
+    background: var(--paper);
+    flex-shrink: 0;
+  }
+  .history-thumb-fallback {
+    width: 44px; height: 44px;
+    border-radius: var(--radius);
+    border: 1px solid var(--line-strong);
+    background: var(--paper);
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Fraunces', serif;
+    color: var(--ink-soft);
+    font-size: 18px;
+  }
+  .history-info { flex: 1; min-width: 0; }
+  .history-label {
+    font-weight: 600;
+    font-size: 13.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .history-meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-soft);
+    margin-top: 2px;
+  }
+  .history-stars { color: var(--okay); font-size: 13px; flex-shrink: 0; letter-spacing: 1px; }
+  .history-delete {
+    background: none;
+    border: none;
+    color: var(--ink-soft);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 4px;
+  }
+  .history-detail {
+    display: none;
+    padding: 4px 16px 16px;
+    border-top: 1px solid var(--line);
+  }
+  .history-card.open .history-detail { display: block; }
 </style>
 </head>
 <body>
@@ -609,6 +698,12 @@
     <div class="wordmark">STEADY<span>.</span></div>
     <div class="tagline">a calmer way<br/>to read a label</div>
   </header>
+
+  <div class="top-nav">
+    <button class="nav-link" id="historyToggleBtn" type="button">View past scans →</button>
+  </div>
+
+  <div id="scanView">
 
   <p class="app-desc">Scan a barcode or snap a photo of any food label and get a calm, evidence-based read on what's actually worth paying attention to.</p>
 
@@ -666,6 +761,10 @@
 
   <div id="results"></div>
 
+  </div>
+
+  <div id="historyView" style="display:none;"></div>
+
   <p class="disclaimer-footer">Steady gives general, evidence-based information — it's not medical advice and isn't a substitute for talking to a doctor, dermatologist, or dietitian about anything specific to your health.</p>
 
 </div>
@@ -717,10 +816,14 @@ const scanStatus = document.getElementById('scanStatus');
 const orDivider = document.getElementById('orDivider');
 const manualBarcodeInput = document.getElementById('manualBarcodeInput');
 const manualBarcodeBtn = document.getElementById('manualBarcodeBtn');
+const historyToggleBtn = document.getElementById('historyToggleBtn');
+const scanView = document.getElementById('scanView');
+const historyView = document.getElementById('historyView');
 
 let imageBase64 = null;
 let imageMediaType = null;
 let sourceText = null;
+let historyThumb = null; // small thumbnail or product image URL for the history list
 let codeReader = null;
 const selectedFilters = new Map(); // label -> detail
 let currentMode = 'food';
@@ -819,6 +922,20 @@ fileInput.addEventListener('change', () => {
       imageBase64 = dataUrl.split(',')[1];
       imageMediaType = 'image/jpeg';
 
+      // Small square crop just for the history list, kept separate from
+      // the larger compressed image sent to the AI, so saved history
+      // entries stay cheap in localStorage.
+      const THUMB_SIZE = 96;
+      const thumbCanvas = document.createElement('canvas');
+      thumbCanvas.width = THUMB_SIZE;
+      thumbCanvas.height = THUMB_SIZE;
+      const side = Math.min(img.width, img.height);
+      thumbCanvas.getContext('2d').drawImage(
+        img, (img.width - side) / 2, (img.height - side) / 2, side, side,
+        0, 0, THUMB_SIZE, THUMB_SIZE
+      );
+      historyThumb = thumbCanvas.toDataURL('image/jpeg', 0.6);
+
       previewThumb.src = dataUrl;
       previewName.textContent = file.name;
       previewRow.style.display = 'flex';
@@ -843,6 +960,7 @@ function resetUploadState() {
   imageBase64 = null;
   imageMediaType = null;
   sourceText = null;
+  historyThumb = null;
   fileInput.value = '';
   previewThumb.style.display = '';
   previewRow.style.display = 'none';
@@ -906,6 +1024,14 @@ async function analyzeLabel() {
     }
     renderResults(parsed);
     clearBtn.style.display = 'inline-block';
+    addHistoryEntry({
+      id: Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      mode: currentMode,
+      timestamp: Date.now(),
+      thumb: historyThumb,
+      label: previewName.textContent || (currentMode === 'skincare' ? 'Skincare label' : 'Food label'),
+      result: parsed
+    });
   } catch (err) {
     console.error(err);
     errorBox.innerHTML = "Something went wrong reading that label.<br/><span style='font-family: \"IBM Plex Mono\", monospace; font-size: 11px; opacity: .8;'>" + esc(err.message) + "</span>";
@@ -1023,8 +1149,10 @@ async function lookupBarcode(barcode) {
     if (product.image_front_url) {
       previewThumb.style.display = '';
       previewThumb.src = product.image_front_url;
+      historyThumb = product.image_front_url;
     } else {
       previewThumb.style.display = 'none';
+      historyThumb = null;
     }
     previewName.textContent = [product.product_name, product.brands].filter(Boolean).join(' — ') || `Barcode ${barcode}`;
     previewRow.style.display = 'flex';
@@ -1153,7 +1281,7 @@ function renderAlternatives(alts) {
   return html;
 }
 
-function renderResults(r) {
+function buildResultsHTML(r) {
   let html = `
     <div class="verdict-card">
       <div class="star-badge">${renderStars(r.star_rating)}</div>
@@ -1209,9 +1337,110 @@ function renderResults(r) {
 
   html += renderAlternatives(r.better_alternatives);
 
-  resultsEl.innerHTML = html;
+  return html;
+}
+
+function renderResults(r) {
+  resultsEl.innerHTML = buildResultsHTML(r);
   resultsEl.classList.add('on');
 }
+
+// --- History (saved scans, kept in localStorage on this device) ---
+
+const HISTORY_KEY = 'steady_history_v1';
+const MAX_HISTORY = 30;
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveHistory(entries) {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(entries));
+  } catch (e) {
+    // Storage full or unavailable (e.g. private browsing) — history just won't persist.
+    console.error('Could not save history', e);
+  }
+}
+
+function addHistoryEntry(entry) {
+  const entries = loadHistory();
+  entries.unshift(entry);
+  saveHistory(entries.slice(0, MAX_HISTORY));
+}
+
+function deleteHistoryEntry(id) {
+  saveHistory(loadHistory().filter(e => e.id !== id));
+  renderHistoryList();
+}
+
+function clearHistory() {
+  if (!confirm('Clear all saved scans? This can\'t be undone.')) return;
+  saveHistory([]);
+  renderHistoryList();
+}
+
+function relativeTime(ts) {
+  const diffMs = Date.now() - ts;
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function renderHistoryList() {
+  const entries = loadHistory();
+
+  if (!entries.length) {
+    historyView.innerHTML = `<div class="history-empty">No scans yet — analyze a label and it'll show up here.</div>`;
+    return;
+  }
+
+  let html = `<div class="history-clear-row"><button class="nav-link" onclick="clearHistory()" type="button">Clear all</button></div><div class="history-list">`;
+  entries.forEach(entry => {
+    const r = entry.result || {};
+    html += `
+      <div class="history-card" data-id="${esc(entry.id)}">
+        <div class="history-summary" onclick="this.parentElement.classList.toggle('open')">
+          ${entry.thumb
+            ? `<img class="history-thumb" src="${esc(entry.thumb)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'history-thumb-fallback',textContent:'S'}))" />`
+            : `<div class="history-thumb-fallback">S</div>`}
+          <div class="history-info">
+            <div class="history-label">${esc(entry.label)}</div>
+            <div class="history-meta">${esc(entry.mode === 'skincare' ? 'Skincare' : 'Food')} · ${esc(relativeTime(entry.timestamp))}</div>
+          </div>
+          <span class="history-stars">${renderStars(r.star_rating)}</span>
+          <button class="history-delete" onclick="event.stopPropagation(); deleteHistoryEntry('${esc(entry.id)}')" title="Delete" type="button">×</button>
+        </div>
+        <div class="history-detail">${buildResultsHTML(r)}</div>
+      </div>`;
+  });
+  html += `</div>`;
+  historyView.innerHTML = html;
+}
+
+historyToggleBtn.addEventListener('click', () => {
+  const showingHistory = historyView.style.display !== 'none';
+  if (showingHistory) {
+    historyView.style.display = 'none';
+    scanView.style.display = '';
+    historyToggleBtn.textContent = 'View past scans →';
+  } else {
+    renderHistoryList();
+    scanView.style.display = 'none';
+    historyView.style.display = 'block';
+    historyToggleBtn.textContent = '← Back to scanning';
+  }
+});
 </script>
 </body>
 </html>
