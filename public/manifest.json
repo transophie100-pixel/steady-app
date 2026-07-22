@@ -1,0 +1,13 @@
+{
+  "name": "Steady — a calmer way to read a label",
+  "short_name": "Steady",
+  "description": "A calm, evidence-based label interpreter for food and skincare products.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F2EEE3",
+  "theme_color": "#F2EEE3",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
